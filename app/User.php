@@ -31,8 +31,13 @@ class User extends Authenticatable
         'password', 'remember_token',
     ];
 
-
-    //SCOPES
+    //////////////////////////////////////////////////
+    ///////////////////SCOPES/////////////////////////
+    //////////////////////////////////////////////////
+    public function scopeIsActived($query)
+    {
+        return $query->whereNull('deleted_at')->where('is_actived', 1);
+    }
     public function scopeUsersIsNotnull($query)
     {
         return $query->where('created_by', '!=', null);
@@ -43,10 +48,17 @@ class User extends Authenticatable
         return $query->where('id_user', '=', $user_id)->count();
     }
 
-    // ASSOCIATIONS
+    //////////////////////////////////////////////////
+    ///////////////////ASSOCIATIONS///////////////////
+    //////////////////////////////////////////////////
+    public function aboutUser()
+    {
+        return $this->hasMany(AboutUser::class, 'user_id', 'id');
+    }
+
     public function post()
     {
-        return $this->hasMany(\App\Post::class, 'id_user', 'id');
+        return $this->hasMany(Post::class, 'user_id', 'id');
     }
 
     public function groupCreate()
@@ -54,21 +66,21 @@ class User extends Authenticatable
         return $this->hasMany(Group::class, 'created_by', 'id');
     }
 
-    public function groups()
-    {
-        return $this->belongsToMany(Group::class, 'users_groups', 'user_id', 'group_id');
-    }
-
     public function photos()
     {
         return $this->belongsToMany(Photo::class, 'users_photos', 'user_id', 'photo_id')
         ->withTimestamps();
     }
+    
     public function profilePhoto()
     {
         return $this->belongsToMany(Photo::class, "profile_photo", "user_id", "photo_id")
-        ->withPivotValue('is_profile')
+        ->withPivot('is_profile')
         ->withTimestamps();
     }
-    
+
+    public function groups()
+    {
+        return $this->belongsToMany(Group::class, 'users_groups', 'user_id', 'group_id');
+    }
 }

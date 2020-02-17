@@ -10,54 +10,42 @@ use Carbon\Carbon as CarbonCarbon;
 use Exception;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\DB;
 
 class ControllerUser extends Controller
 {
     private $user;
     private $photo;
+    private $about;
 
     public function __construct(User $user)
     {
         $this->user  = $user;
         $this->photo = App::make("App\Photo"); 
+        $this->about = App::make("App\AboutUser");
     }
 
     public function index()
     {
-        $query = $this->user->where('is_actived', 1);
-        
-        $query->with(['photos' => function($query){
-            $query->select('path', 'name', 'description');
-        }]);
-        $user = $query->paginate(10);
+        $query = $this->user->query();
 
-        return $user;
+        $query->with('aboutUser');
+        $query->with(['profilePhoto' => function($query){
+            $query->where('is_profile', 1)->select(['name', 'path', 'type', 'description', 'tags']);
+        }]);
+        $query->with(['photos' => function($query){
+            $query->select(['name', 'path', 'type', 'description', 'tags']);
+        }]);
+        $query->isActived();
+
+        $user = $query->paginate(5);
+        return response()->json([
+            $user
+        ]);
     }
     public function search($id)
     {
-
-        try
-        {
-            $user = $this->user->findOrFail($id);
-            $user->post;
-           
-            if($user->is_actived == 0)
-            {
-                return response()->json([
-                    'messgae' => 'Usuário removido ou desativado'
-                ], 200);
-            }else{
-                return response()->json([
-                    'data'    => $user,
-                    'messgae' => 'Usuário encontrado com sucesso!'
-                ], 200);
-            }
-            
-        }
-        catch(Exception $e)
-        {
-            return response()->json(['error' => $e->getMessage()], 401);
-        }
+        
     }
     public function create(Request $request)
     {
@@ -65,9 +53,11 @@ class ControllerUser extends Controller
         {
             throw new Exception("User data not informed");
         }
+
         $user = $request->all();
         try
         {   
+            DB::beginTransaction();
             // Assigning values to the user
             $this->user->name       = $user['user']['name'];
             $this->user->email      = $user['user']['email'];
@@ -77,25 +67,39 @@ class ControllerUser extends Controller
 
             if($this->user->save())
             {
+                if(isset($user['aboutUser']))
+                {
+                    $aboutUser = $user['aboutUser'];
+                    $this->about->about        = $aboutUser['about'];
+                    $this->about->phone        = $aboutUser['phone'];
+                    $this->about->mobile_phone = $aboutUser['mobilePhone'];
+                    $this->about->birthday     = date('Y-m-d', strtotime($aboutUser['birthday']));
+                    $this->about->user_id      = $this->user->id;
+
+                    $this->about->save();
+                }
                 if(isset($user['photo']))
                 {
                     $userPhoto = $user['photo'];                            
                     $this->photo->name        = "user_{$this->user->name}_" . Carbon::today();
-                    $this->photo->path        = $userPhoto['path'];
+                    // HARDCODED
+                    $this->photo->path        = "/photos/users/photo_user_{$this->user->name}_".Carbon::today();
+                    //
                     $this->photo->type        = $userPhoto['type'];
                     $this->photo->description = $userPhoto['description'];
                     $this->photo->tags        = $userPhoto['tags'];
 
-                    $this->photo->save();
-                    
-                    if(isset($user['photoProfile']))
+                    if($this->photo->save())
                     {
-                        $photoProfile = $user['photProfile'];
-                        $user->photos()->attach($this->photo->id, $photoProfile['is_profile']);
-                    }   
+                        $photoProfile = $user['photoProfile'];
+                        $this->user->photos()->attach($this->photo->id);
+                        $this->user->profilePhoto()->attach($this->photo->id, ["is_profile" => $photoProfile['is_profile']]);   
+                    }
+                    
                 }
             }
-            
+
+            DB::commit();
             return response()->json([
                 'msg' => "User created with success!"
             ]);
@@ -103,52 +107,21 @@ class ControllerUser extends Controller
         }
         catch(Exception $e)
         {
-            return response()->json(['error' => $e->getMessage(), "line" => $e->getLine()], 401);
+            DB::rollBack();
+            return response()->json([
+                "line"  => $e->getLine(),
+                'error' => $e->getMessage(), 
+                'file' => $e->getFile()
+            ]);
         }
     }
     public function update($id, Request $request)
     {
-        $data = $request->all();
-        
-        try
-        {
-            $user = $this->user->findOrFail($id);
 
-            $user->update($data);
-            return response()->json([
-                'data' => [
-                    'status'  => 'updated',
-                    'message' => 'Usuário atualizado com succeso!'
-                ]
-            ]);
-        }
-        catch(Exception $e)
-        {
-            return response()->json(['error' => $e->getMessage()], 401);
-        }
     }
     public function delete($id)
     {
-        try
-        {
-            $data = [
-                'deleted_at' => Carbon::today(), 
-                'is_actived' => 0
-            ];
-
-           
-            $user = $this->user->findOrFail($id);
-            $user->update($data);
-            return response()->json([
-                'data' => [
-                    'status' => 'Disabled',
-                    'messge' => 'Usuário desativado com succeso!'
-                ]
-            ]);
-        }catch(Exception $e)
-        {
-
-        }
+       
     }
 
 }
